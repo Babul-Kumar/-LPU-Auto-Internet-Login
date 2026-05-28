@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LPU Auto Internet Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!--  SETUP SCREEN — shown on first install / no creds  -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <div id="screen-setup" class="screen active">
+
+    <div class="setup-wrap">
+
+      <!-- Logo -->
+      <div class="logo-area">
+        <div class="logo-ring">
+          <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
+            <circle cx="22" cy="22" r="22" fill="url(#g1)"/>
+            <path d="M22 7C15 7 9 12 8 19c2-2 5-3.5 8-2.5C18 11 26 11 28 16.5c3-1 6 0 8 2.5C35 12 29 7 22 7Z" fill="white" opacity=".9"/>
+            <path d="M22 14c-3 0-6 1.5-7 4 2-1.5 4.5-2 7-2s5 .5 7 2c-1-2.5-4-4-7-4Z" fill="white" opacity=".65"/>
+            <circle cx="22" cy="26" r="4" fill="white"/>
+            <path d="M19.5 26L22 31l2.5-5" fill="white"/>
+            <defs>
+              <linearGradient id="g1" x1="0" y1="0" x2="44" y2="44" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#4f8ef7"/>
+                <stop offset="100%" stop-color="#00d4ff"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div>
+          <h1>LPU AutoLogin</h1>
+          <p>Smart Captive Portal Manager</p>
+        </div>
+      </div>
+
+      <div class="setup-card">
+        <div class="setup-card-title">
+          <span class="step-badge">1</span>
+          Enter Your Portal Credentials
+        </div>
+        <p class="setup-hint">
+          Saved once — used automatically every time a captive portal is detected.
+          Stored locally in your browser only.
+        </p>
+
+        <div class="form-group">
+          <label for="setup-username">Student ID / Username</label>
+          <input
+            type="text"
+            id="setup-username"
+            placeholder="e.g. 12315678"
+            autocomplete="username"
+            spellcheck="false"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="setup-password">Password</label>
+          <div class="input-wrap">
+            <input
+              type="password"
+              id="setup-password"
+              placeholder="Your portal password"
+              autocomplete="current-password"
+            />
+            <button class="eye-btn" data-for="setup-password" type="button" aria-label="Toggle password">
+              <svg class="eye-icon" viewBox="0 0 20 20" fill="none"><path d="M10 4C5 4 1.5 10 1.5 10S5 16 10 16s8.5-6 8.5-6S15 4 10 4Z" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="2.5" stroke="currentColor" stroke-width="1.5"/></svg>
+            </button>
+          </div>
+        </div>
+
+
+        <div id="setup-error" class="msg msg-error hidden"></div>
+
+        <button class="btn-primary" id="btn-setup-save">
+          <span id="setup-btn-text">Save & Start Auto-Login</span>
+          <span id="setup-spinner" class="spinner hidden">⟳</span>
+        </button>
+      </div>
+
+      <p class="setup-footer">
+        🔒 Credentials never leave your device
+      </p>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!--  DASHBOARD SCREEN — shown when creds are saved     -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <div id="screen-dashboard" class="screen">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="header-brand">
+        <svg width="22" height="22" viewBox="0 0 44 44" fill="none">
+          <circle cx="22" cy="22" r="22" fill="url(#hg)"/>
+          <path d="M22 7C15 7 9 12 8 19c2-2 5-3.5 8-2.5C18 11 26 11 28 16.5c3-1 6 0 8 2.5C35 12 29 7 22 7Z" fill="white" opacity=".9"/>
+          <circle cx="22" cy="26" r="4" fill="white"/>
+          <path d="M19.5 26L22 31l2.5-5" fill="white"/>
+          <defs>
+            <linearGradient id="hg" x1="0" y1="0" x2="44" y2="44" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#4f8ef7"/><stop offset="100%" stop-color="#00d4ff"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <span>LPU AutoLogin</span>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" id="btn-open-settings" title="Settings">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5Z" stroke="currentColor" stroke-width="1.5"/><path d="M16.5 10a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0Z" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 2"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Status Card -->
+    <div class="status-card" id="status-card">
+      <div class="pulse-wrap">
+        <div class="pulse-ring" id="pulse-ring"></div>
+        <div class="status-dot" id="status-dot"></div>
+      </div>
+      <div class="status-text">
+        <div class="status-title" id="status-title">Checking…</div>
+        <div class="status-sub"   id="status-sub">Verifying internet connection</div>
+      </div>
+      <button class="refresh-btn" id="btn-refresh" title="Check now">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M17 10A7 7 0 1110 3v0M10 3l2.5 2.5L10 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+
+    <!-- Info Row -->
+    <div class="info-row">
+      <div class="info-card">
+        <div class="info-icon">👤</div>
+        <div>
+          <div class="info-label">Saved User</div>
+          <div class="info-val" id="dash-username">—</div>
+        </div>
+      </div>
+      <div class="info-card">
+        <div class="info-icon">🕐</div>
+        <div>
+          <div class="info-label">Last Login</div>
+          <div class="info-val" id="dash-last-login">Never</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Auto-Login Toggle -->
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Auto-Login</div>
+        <div class="toggle-sub">Auto-fill & submit on portal detection</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="toggle-auto" checked />
+        <span class="track"></span>
+      </label>
+    </div>
+
+    <!-- Debug Console -->
+    <div class="console-box">
+      <div class="console-hdr">
+        <span>📋 Activity Log</span>
+        <button class="clear-btn" id="btn-clear">Clear</button>
+      </div>
+      <div class="console-body" id="console-body">
+        <div class="console-empty">No activity yet…</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════ -->
+  <!--  SETTINGS SCREEN                                   -->
+  <!-- ═══════════════════════════════════════════════════ -->
+  <div id="screen-settings" class="screen">
+
+    <div class="settings-hdr">
+      <button class="back-btn" id="btn-back">← Back</button>
+      <h2>Settings</h2>
+    </div>
+
+    <div class="settings-body">
+
+      <!-- Edit Credentials -->
+      <div class="settings-card">
+        <div class="card-title">🔑 Portal Credentials</div>
+
+        <div class="form-group">
+          <label for="edit-username">Student ID / Username</label>
+          <input type="text" id="edit-username" placeholder="12315678" autocomplete="username" spellcheck="false" />
+        </div>
+
+        <div class="form-group">
+          <label for="edit-password">Password</label>
+          <div class="input-wrap">
+            <input type="password" id="edit-password" placeholder="••••••••" autocomplete="current-password" />
+            <button class="eye-btn" data-for="edit-password" type="button" aria-label="Toggle password">
+              <svg class="eye-icon" viewBox="0 0 20 20" fill="none"><path d="M10 4C5 4 1.5 10 1.5 10S5 16 10 16s8.5-6 8.5-6S15 4 10 4Z" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="2.5" stroke="currentColor" stroke-width="1.5"/></svg>
+            </button>
+          </div>
+        </div>
+
+
+        <button class="btn-primary" id="btn-save-creds">Save Credentials</button>
+        <button class="btn-danger"  id="btn-delete-creds">Delete & Reset</button>
+        <div class="msg msg-success hidden" id="creds-saved-msg">✓ Credentials saved</div>
+      </div>
+
+      <!-- Preferences -->
+      <div class="settings-card">
+        <div class="card-title">⚙️ Preferences</div>
+
+        <div class="pref-row">
+          <div class="pref-text">
+            <span>Auto-Login Enabled</span>
+            <small>Auto-fill portal form when detected</small>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="pref-auto" checked />
+            <span class="track"></span>
+          </label>
+        </div>
+
+        <div class="pref-row">
+          <div class="pref-text">
+            <span>Login Notifications</span>
+            <small>Notify on successful login</small>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="pref-notify-ok" checked />
+            <span class="track"></span>
+          </label>
+        </div>
+
+        <div class="pref-row">
+          <div class="pref-text">
+            <span>Failure Alerts</span>
+            <small>Notify when auto-login fails</small>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="pref-notify-fail" checked />
+            <span class="track"></span>
+          </label>
+        </div>
+
+        <button class="btn-secondary" id="btn-save-prefs">Save Preferences</button>
+        <div class="msg msg-success hidden" id="prefs-saved-msg">✓ Preferences saved</div>
+      </div>
+
+      <!-- About -->
+      <div class="settings-card about-card">
+        <div class="card-title">ℹ️ About</div>
+        <p><strong>LPU Auto Internet Login</strong> v1.0.0</p>
+        <p>Smart Captive Portal Manager for campus networks.</p>
+        <div class="privacy-note">
+          🔒 All data is stored locally in your browser.<br>
+          Nothing is sent to any server.
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

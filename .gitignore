@@ -1,0 +1,28 @@
+# ─── Dependencies ────────────────────────────────────────────────────────────
+node_modules/
+
+# ─── Production build output ─────────────────────────────────────────────────
+# The dist/ folder is built, zipped, and uploaded to GitHub Releases.
+# It is NOT committed to the repo — users download the ZIP from Releases.
+dist/
+
+# ─── OS files ────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── IDE / Editor ────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.user
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+
+# ─── Environment / Secrets ───────────────────────────────────────────────────
+# NEVER commit API keys, secrets, or credentials
+.env
+.env.*
+!.env.example
