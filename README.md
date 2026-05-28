@@ -36,12 +36,11 @@ Every time you connect to LPU campus WiFi, the network shows a **captive portal 
 | Feature | Description |
 |---|---|
 | 🤖 **Auto-Login** | Detects captive portal and logs you in automatically |
-| 👻 **Silent / Background** | No tab opens, no popup flashes — works invisibly |
+| 👻 **Completely Silent** | No tab opens, no popups, no notifications — 100% invisible |
 | ⚡ **Fast** | Detects and logs in within 5–10 seconds of connecting to WiFi |
 | 🔄 **Smart Retry** | If login fails, retries with backoff: 5s → 15s → 30s → 60s |
-| 📋 **Activity Log** | Live timestamped log inside the popup so you know what's happening |
-| 🔔 **Notifications** | Desktop notification when login succeeds (optional) |
-| ⚙️ **Configurable** | Toggle auto-login, notifications, and failure alerts |
+| 📋 **Activity Log** | See exactly what happened inside the popup — timestamped logs |
+| ⚙️ **Configurable** | Toggle auto-login on or off anytime |
 | 🔒 **100% Local** | No account, no server, no data collection |
 
 ---
@@ -137,9 +136,11 @@ That's it. You're done. The extension now runs silently in the background.
 ### Step 3 — Connect to LPU WiFi
 
 1. Connect your laptop/PC to **LPU Campus WiFi** as usual
-2. Wait 5–10 seconds
-3. You'll see a **desktop notification**: `✅ Connected! Auto-login successful.`
-4. Internet is available — no login page, no manual steps
+2. Wait **5–10 seconds**
+3. Internet starts working — completely silently, no popups, no alerts
+4. To confirm it worked, click the extension icon and check the **Activity Log**
+
+> 💡 The extension works entirely in the background. You will never see a notification or a login page — it just works.
 
 ---
 
@@ -171,8 +172,8 @@ After setup, clicking the extension icon shows the **Dashboard**:
 | **Status dot** | 🟢 Connected / 🔴 Portal detected / 🟡 Checking / ⚫ Offline |
 | **↺ Refresh button** | Manually trigger an internet check right now |
 | **Auto-Login toggle** | Turn auto-login on or off without deleting credentials |
-| **Activity Log** | Shows every action the extension took with timestamps |
-| **⚙️ Settings** | Change credentials, notification preferences |
+| **Activity Log** | The only place to see what the extension did — timestamped entries |
+| **⚙️ Settings** | Change credentials or toggle auto-login |
 
 ---
 
@@ -203,9 +204,7 @@ To completely remove your saved data:
 
 | Setting | Default | What it controls |
 |---|---|---|
-| **Auto-Login Enabled** | ✅ On | Whether the extension auto-fills the portal |
-| **Login Notifications** | ✅ On | Desktop notification when login succeeds |
-| **Failure Alerts** | ✅ On | Alert when all retry attempts are exhausted |
+| **Auto-Login Enabled** | ✅ On | Whether the extension auto-fills the portal when detected |
 
 ---
 
@@ -220,13 +219,13 @@ Every 1 minute (background alarm):
         ↓
   200/redirect → 🚨 CAPTIVE PORTAL DETECTED
         ↓
-  Silent Login (no tab opens):
+   Silent Login (no tab opens, no notifications):
     1. Fetch portal HTML in background
     2. Parse form fields + hidden tokens
     3. POST credentials silently
     4. Verify: GET generate_204 again
         ↓
-  ✅ CONNECTED → notify user
+  ✅ CONNECTED → update badge + log (no popup)
   ❌ Failed    → retry in 5s → 15s → 30s → 60s
         ↓
   Timeout → ⚫ OFFLINE
