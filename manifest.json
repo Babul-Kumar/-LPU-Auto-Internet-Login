@@ -40,7 +40,6 @@
     "alarms",
     "tabs",
     "storage",
-    "notifications",
     "scripting",
     "webNavigation"
   ],

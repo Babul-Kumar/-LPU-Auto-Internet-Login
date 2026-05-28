@@ -248,19 +248,8 @@ function resetRetryState() {
   isLoginInProgress = false;
 }
 
-// ─── Notification Helper ──────────────────────────────────────────────────────
-
-async function notify(title, message) {
-  const result   = await chrome.storage.local.get('extensionSettings');
-  const settings = result.extensionSettings ?? {};
-
-  chrome.notifications.create({
-    type:    'basic',
-    iconUrl: chrome.runtime.getURL('icons/icon48.png'),
-    title,
-    message,
-  });
-}
+// Notifications intentionally disabled — extension runs 100% silently.
+// All activity is logged to the popup Activity Log instead.
 
 // ─── Core Flow: Handle Captive Portal ─────────────────────────────────────────
 
@@ -315,11 +304,6 @@ async function handleConnected() {
   });
 
 
-  const result   = await chrome.storage.local.get('extensionSettings');
-  const settings = result.extensionSettings ?? {};
-  if (settings.notifyOnLogin !== false) {
-    await notify('✅ Connected!', 'Auto-login successful. Internet is available.');
-  }
 }
 
 async function handleOffline() {
@@ -431,11 +415,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     periodInMinutes: 1,
   });
 
-  if (details.reason === 'install') {
-    // DO NOT open popup via chrome.tabs.create — that tab won't have extension APIs.
-    // User should click the toolbar icon to open the popup.
-    await notify('LPU Auto Login Installed ✅', 'Click the extension icon in the toolbar to save your credentials.');
-  }
+  // No install notification — extension starts silently.
 });
 
 chrome.runtime.onStartup.addListener(async () => {

@@ -246,9 +246,7 @@ async function loadSettingsForm() {
   $('edit-password').value       = creds.password ?? '';
   $('edit-password').placeholder = creds.password ? '(password saved — edit to change)' : 'Enter new password';
 
-  $('pref-auto').checked        = settings.autoLoginEnabled !== false;
-  $('pref-notify-ok').checked   = settings.notifyOnLogin    !== false;
-  $('pref-notify-fail').checked = settings.notifyOnFailure  !== false;
+  $('pref-auto').checked = settings.autoLoginEnabled !== false;
 }
 
 $('btn-back').addEventListener('click', async () => {
@@ -320,8 +318,6 @@ $('btn-save-prefs').addEventListener('click', async () => {
   await store.set('extensionSettings', {
     ...settings,
     autoLoginEnabled: $('pref-auto').checked,
-    notifyOnLogin:    $('pref-notify-ok').checked,
-    notifyOnFailure:  $('pref-notify-fail').checked,
   });
   $('toggle-auto').checked = $('pref-auto').checked;
   flashMsg($('prefs-saved-msg'));
