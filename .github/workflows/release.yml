@@ -73,14 +73,19 @@ jobs:
             5. Click **Load unpacked** → select the unzipped folder
             6. Click the extension icon → enter your LPU credentials → done!
 
+            ### How it works
+            - Connects to WiFi → internet works in **5–10 seconds**, automatically
+            - **100% silent** — no popup notifications, no visible tabs, nothing
+            - To check what it did, click the extension icon → Activity Log
+            - If login fails it retries automatically: 5s → 15s → 30s → 60s
+
             ### What's included
-            - Minified production build only (source not included)
-            - Auto-login runs silently in the background
-            - No data leaves your device
+            - Minified production build (source code not included)
+            - Zero notifications — works entirely in the background
+            - No data ever leaves your device
 
             ---
-            > **Note:** This is a pre-release distributed via GitHub.
-            > A Chrome Web Store listing is planned for a future version.
+            > ⚠️ Always download from **Releases** — not "Source code (zip)" links.
           files: dist/extension.zip
           draft: false
           prerelease: false
