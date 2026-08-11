@@ -151,7 +151,57 @@
     try { chrome.runtime.sendMessage({ type, message, data }); } catch {}
   }
 
-  // ─── Main ─────────────────────────────────────────────────────────────────
+  // ─── Find & tick the "I Agree" checkbox ──────────────────────────────────
+  // 24Online portals (and many other captive portals) gate the Login button
+  // behind an agree/terms checkbox. If it is unchecked the POST is ignored
+  // even though the button is clickable.
+
+  function findAndCheckAgreeBox() {
+    // Try by known name attributes first
+    const nameSelectors = [
+      'input[name="agreeFlag"]',
+      'input[name="agree"]',
+      'input[name="I_AGREE"]',
+      'input[name="iAgree"]',
+      'input[name="agreecheck"]',
+      'input[name="agree_flag"]',
+      'input[name="termsAgree"]',
+      'input[name="acceptTerms"]',
+      'input[name="terms"]',
+    ];
+    for (const sel of nameSelectors) {
+      const el = document.querySelector(sel);
+      if (el && el.type === 'checkbox' && !el.checked) {
+        el.checked = true;
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        tell('log', `[AutoLogin] Checked agree checkbox: ${sel}`);
+        return true;
+      }
+      if (el && el.type === 'checkbox' && el.checked) {
+        tell('log', `[AutoLogin] Agree checkbox already checked: ${sel}`);
+        return true; // already ticked — nothing to do
+      }
+    }
+
+    // Heuristic fallback: find any unchecked checkbox near text containing
+    // 'agree', 'terms', 'accept' (covers portals that don't use our known names)
+    const allCheckboxes = [...document.querySelectorAll('input[type="checkbox"]')];
+    for (const cb of allCheckboxes) {
+      const context = (cb.closest('label,p,div,td,li') ?? cb.parentElement)?.textContent ?? '';
+      if (/agree|terms|accept|condition/i.test(context)) {
+        if (!cb.checked) {
+          cb.checked = true;
+          cb.dispatchEvent(new Event('change', { bubbles: true }));
+          tell('log', '[AutoLogin] Checked agree checkbox via heuristic');
+        }
+        return true;
+      }
+    }
+
+    tell('log', '[AutoLogin] No agree checkbox found — proceeding without it');
+    return false;
+  }
+
 
   async function main() {
     if (!looksLikeLoginPage()) return;
@@ -184,7 +234,12 @@
       fill(usernameField, username);
       await wait(200);
       fill(passwordField, password);
-      await wait(300);
+      await wait(200);
+
+      // Tick the "I Agree" checkbox BEFORE clicking Login
+      // (24Online and many captive portals require this)
+      findAndCheckAgreeBox();
+      await wait(200);
 
       tell('log', '[AutoLogin] Submitting form…');
       submitBtn.click();

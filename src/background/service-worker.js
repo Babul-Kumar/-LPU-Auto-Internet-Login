@@ -173,6 +173,28 @@ async function silentLogin(username, password) {
       if (name) payload.set(name, value);
     }
 
+    // ── Detect and include the "I Agree" checkbox ──────────────────────────────
+    // 24Online portals require an agree/terms checkbox to be checked.
+    // Without this the server returns HTTP 200 with the same login page (not an error
+    // status) — which is why the POST succeeds but the session is never created.
+    const agreeFieldNames = [
+      'agreeFlag', 'agree', 'I_AGREE', 'iAgree', 'agreecheck',
+      'agree_flag', 'termsAgree', 'acceptTerms', 'terms',
+    ];
+    // Check if any of these appear as a checkbox in the HTML
+    let agreeField = null;
+    for (const af of agreeFieldNames) {
+      // Match a checkbox input with this name
+      if (new RegExp(`name=["']${af}["']`, 'i').test(portalHtml)) {
+        agreeField = af;
+        break;
+      }
+    }
+    // 24Online default: agreeFlag is always required even if not found by regex
+    agreeField = agreeField ?? 'agreeFlag';
+    payload.set(agreeField, '1');
+    await log(`Agree checkbox field: ${agreeField}=1`, 'info');
+
     // Extract form action URL
     const actionMatch = /<form[^>]+action=["']([^"']+)["']/i.exec(portalHtml);
     if (actionMatch) {
@@ -209,14 +231,15 @@ async function silentLogin(username, password) {
     await log(`Form: action=${formAction}, userField=${userField}, passField=${passField}`, 'info');
 
   } catch (parseErr) {
-    // Parsing failed — fall back to minimal payload with just credentials
+    // Parsing failed — fall back to minimal payload with agree flag + credentials
     await log(`Form parse warning: ${parseErr.message} — using minimal payload`, 'warn');
     payload.set('username', username);
     payload.set('password', password);
+    payload.set('agreeFlag', '1'); // always include agree for 24Online portals
   }
 
   // ── Step 3: POST the login form ─────────────────────────────────────────────
-  await log('Submitting credentials silently…', 'info');
+  await log(`Submitting credentials silently… payload keys: ${[...payload.keys()].join(', ')}`, 'info');
   try {
     const postRes = await fetch(formAction, {
       method:  'POST',
@@ -225,7 +248,12 @@ async function silentLogin(username, password) {
       redirect: 'follow',
       cache:   'no-store',
     });
-    await log(`Login POST returned ${postRes.status}`, 'info');
+    const postBody = await postRes.text();
+    await log(`Login POST returned ${postRes.status} (${postRes.url})`, 'info');
+    // If the response still contains the login form, the agree checkbox or credentials were rejected
+    if (/login|sign.?in|client\.jsp|agreeFlag|I_AGREE/i.test(postBody) && postRes.status === 200) {
+      await log('POST response looks like the login page again — possible missing agree field or wrong credentials', 'warn');
+    }
   } catch (postErr) {
     await log(`Login POST failed: ${postErr.message}`, 'error');
     return 'FAILED';
