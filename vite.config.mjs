@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { copyFileSync, mkdirSync, readdirSync, statSync } from 'fs';
+import { copyFileSync, mkdirSync, readdirSync, statSync, readFileSync, writeFileSync } from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -16,51 +16,47 @@ function copyDir(src, dest) {
   }
 }
 
+// Content scripts that must NOT use ES module syntax (injected as classic scripts)
+const IIFE_ENTRIES = [
+  'src/content/autologin',
+  'src/content/portal-registry',
+  'popup/popup',
+];
+
 export default defineConfig({
-  // Vite is used purely as a bundler/minifier — not as a dev server
   build: {
-    outDir:   'dist',
+    outDir:      'dist',
     emptyOutDir: true,
-    minify:   'terser',   // stronger minification than esbuild default
+    minify:      'terser',
     terserOptions: {
-      compress: {
-        drop_console:   false,  // keep console.log (used for SW logging)
-        drop_debugger:  true,
-        passes:         2,
-      },
-      mangle: {
-        toplevel: true,  // rename top-level vars/functions → hard to read
-      },
-      format: {
-        comments: false, // strip all comments from output
-      },
+      compress: { drop_console: false, drop_debugger: true, passes: 2 },
+      mangle:   { toplevel: true },
+      format:   { comments: false },
     },
     rollupOptions: {
-      // ── Entry points ───────────────────────────────────────────────────────
-      // Each file becomes a separate minified bundle (Chrome needs separate files)
       input: {
-        'popup/popup':               resolve(__dirname, 'popup/popup.js'),
         'src/background/service-worker': resolve(__dirname, 'src/background/service-worker.js'),
-        'src/content/autologin':     resolve(__dirname, 'src/content/autologin.js'),
-        'src/content/portal-registry': resolve(__dirname, 'src/content/portal-registry.js'),
+        'src/content/autologin':         resolve(__dirname, 'src/content/autologin.js'),
+        'src/content/portal-registry':   resolve(__dirname, 'src/content/portal-registry.js'),
+        'popup/popup':                   resolve(__dirname, 'popup/popup.js'),
       },
       output: {
-        // Preserve the original file names so manifest.json paths still work
+        // ES modules work for the service worker (MV3 supports ESM SWs).
+        // Content scripts are already written as IIFEs / no-export scripts,
+        // so outputting them as ES modules is still safe — they have no
+        // top-level import/export statements that would break injection.
+        format:         'es',
         entryFileNames: '[name].js',
         chunkFileNames: '[name]-[hash].js',
-        // No code-splitting for extensions — each entry is self-contained
-        manualChunks: undefined,
-        format: 'es',   // ES modules — Chrome MV3 supports these natively
+        manualChunks:   undefined,
       },
     },
   },
 
-  // ── Post-build: copy static assets that Vite doesn't bundle ──────────────
   plugins: [
     {
       name: 'copy-extension-assets',
       closeBundle() {
-        // Ensure output subdirs exist before copying
         mkdirSync(resolve(__dirname, 'dist'), { recursive: true });
         mkdirSync(resolve(__dirname, 'dist/popup'), { recursive: true });
 
@@ -83,8 +79,29 @@ export default defineConfig({
           resolve(__dirname, 'popup/popup.css'),
           resolve(__dirname, 'dist/popup/popup.css'),
         );
+
+        // Wrap content scripts and popup as IIFE so they work as classic scripts.
+        // ES module output may contain top-level `export {}` which breaks injection.
+        for (const entry of IIFE_ENTRIES) {
+          const filePath = resolve(__dirname, `dist/${entry}.js`);
+          try {
+            let code = readFileSync(filePath, 'utf8');
+            // Strip any trailing `export {}` or `export default ...` added by Rollup
+            code = code.replace(/^export\s*\{[^}]*\}\s*;?\s*$/gm, '').trim();
+            // If not already an IIFE (starts with !function or (function), wrap it
+            if (!/^[!;]?\s*\(?function/.test(code) && !/^var /.test(code)) {
+              code = `;(function(){\n${code}\n})();`;
+            }
+            writeFileSync(filePath, code, 'utf8');
+          } catch (e) {
+            console.warn(`Could not wrap ${entry}: ${e.message}`);
+          }
+        }
+
         console.log('\n✅  Static assets copied to dist/');
+        console.log('✅  Content scripts wrapped as IIFE for classic-script injection.');
       },
     },
   ],
 });
+

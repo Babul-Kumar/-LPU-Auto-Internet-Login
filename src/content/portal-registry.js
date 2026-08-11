@@ -15,6 +15,19 @@
  *   - preLoginHook:      Optional function to run before fill (e.g., click a tab)
  */
 const PORTAL_REGISTRY = [
+  // ── 24Online Client Portal (LPU) — http://internet.lpu.in/24online/webpages/client.jsp
+  // This is the actual login system LPU uses. Highest priority.
+  {
+    name: '24Online Client Portal (LPU)',
+    match: (hostname, pathname) =>
+      hostname === 'internet.lpu.in' ||
+      pathname.includes('24online')  ||
+      pathname.includes('client.jsp'),
+    usernameSelector: 'input[name="userId"], input[id="userId"]',
+    passwordSelector: 'input[name="password"], input[type="password"]',
+    submitSelector:   'input[name="btnLogin"], input[type="submit"]',
+  },
+
   // ── LPU Campus Portal — https://internet.lpu.in/ ───────────────────────────
   {
     name: 'LPU Campus Portal',

@@ -10,8 +10,10 @@
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const ALARM_NAME        = 'internetCheck';
-const CHECK_URL         = 'https://clients3.google.com/generate_204';
-const PORTAL_PROBE_URL  = 'https://internet.lpu.in/';  // LPU captive portal — always redirects here
+// Plain HTTP so captive portals can intercept it (HTTPS blocks interception)
+const CHECK_URL         = 'http://captive.apple.com';
+// Exact 24Online client login page
+const PORTAL_PROBE_URL  = 'http://internet.lpu.in/24online/webpages/client.jsp';
 const CHECK_TIMEOUT_MS  = 5000;
 const RETRY_DELAYS_MS   = [5000, 15000, 30000, 60000]; // exponential backoff
 
@@ -75,17 +77,28 @@ async function checkInternet() {
     });
     clearTimeout(timeout);
 
-    if (response.status === 204) {
-      return 'CONNECTED';
-    }
-    if (response.redirected || response.status === 200) {
-      // 200 with body = captive portal injected a page
+    // captive.apple.com returns 200 with "Success" body when connected
+    // If redirected or different response, a captive portal intercepted us
+    if (response.ok && !response.redirected) {
+      const text = await response.text();
+      if (text.includes('Success') || response.status === 200) {
+        // Do a secondary check — try generate_204 via HTTP
+        try {
+          const r2 = await fetch('http://clients3.google.com/generate_204', {
+            method: 'GET', cache: 'no-store', redirect: 'manual',
+            signal: AbortSignal.timeout(3000),
+          });
+          if (r2.status === 204 || r2.status === 0) return 'CONNECTED';
+          return 'CAPTIVE_PORTAL';
+        } catch { return 'CONNECTED'; } // if second probe fails, trust first
+      }
       return 'CAPTIVE_PORTAL';
     }
+    // redirect means portal intercepted our request
     return 'CAPTIVE_PORTAL';
 
   } catch (err) {
-    if (err.name === 'AbortError') {
+    if (err.name === 'AbortError' || err.name === 'TimeoutError') {
       await log('Connection check timed out', 'warn');
       return 'CAPTIVE_PORTAL'; // timeout often means captive portal blocking
     }
@@ -168,9 +181,10 @@ async function silentLogin(username, password) {
       formAction = new URL(rawAction, portalBase).href;
     }
 
-    // Extract username field name (fallback to 'username')
-    const userFieldNames = ['username', 'userid', 'user_name', 'user', 'loginid', 'login', 'email'];
-    let userField = 'username';
+    // Extract username field name
+    // 24Online client.jsp uses 'userId' — check that first, then common fallbacks
+    const userFieldNames = ['userId', 'username', 'userid', 'user_name', 'user', 'loginid', 'login', 'email'];
+    let userField = 'userId'; // 24Online default
     for (const name of userFieldNames) {
       if (new RegExp(`name=["']${name}["']`, 'i').test(portalHtml)) {
         userField = name;

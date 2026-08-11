@@ -27,10 +27,11 @@
     "service_worker": "src/background/service-worker.js"
   },
 
+
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["src/content/autologin.js"],
+      "js": ["src/content/portal-registry.js", "src/content/autologin.js"],
       "run_at": "document_idle",
       "all_frames": false
     }

@@ -15,7 +15,15 @@
 
   function isLPUPortal() {
     const h = location.hostname.toLowerCase();
-    return h === 'internet.lpu.in' || h.includes('lpu.in') || h.includes('internet.lpu');
+    const p = location.pathname.toLowerCase();
+    return (
+      h === 'internet.lpu.in' ||
+      h.includes('lpu.in')    ||
+      h.includes('internet.lpu') ||
+      // 24Online paths are a strong signal regardless of hostname
+      p.includes('24online') ||
+      p.includes('client.jsp')
+    );
   }
 
   function looksLikeLoginPage() {
@@ -38,6 +46,10 @@
   function findUsernameField() {
     // Priority: named/id attributes → type-based → proximity to password field
     const candidates = [
+      // 24Online client.jsp specific
+      'input[name="userId"]',
+      'input[id="userId"]',
+      // Common patterns
       'input[name="username"]',
       'input[name="userid"]',
       'input[name="user_name"]',
@@ -89,12 +101,16 @@
 
   function findSubmitButton() {
     const selectors = [
+      // 24Online specific
+      'input[name="btnLogin"]',
+      'input[value="Login"]',
+      'input[value="Log In"]',
+      'input[value="LOG IN"]',
+      'input[value="Sign In"]',
+      'input[value="Submit"]',
+      // Generic
       'input[type="submit"]',
       'button[type="submit"]',
-      'input[value="Login"]',
-      'input[value="Sign In"]',
-      'input[value="LOG IN"]',
-      'input[value="Submit"]',
       'button[value="Login"]',
       '#loginbtn',
       '.login-btn',
