@@ -163,50 +163,38 @@ async function silentLogin(username, password) {
   const payload  = new URLSearchParams();
 
   try {
-    // Extract all hidden fields (session tokens, CSRF, etc.)
-    const hiddenRe = /<input[^>]+type=["']hidden["'][^>]*>/gi;
+    // Extract ALL input tags from the portal HTML (hidden, submit, text, etc.)
+    const inputRe = /<input[^>]+>/gi;
     let match;
-    while ((match = hiddenRe.exec(portalHtml)) !== null) {
+    while ((match = inputRe.exec(portalHtml)) !== null) {
       const tag   = match[0];
       const name  = /name=["']([^"']+)["']/i.exec(tag)?.[1];
       const value = /value=["']([^"']*)["']/i.exec(tag)?.[1] ?? '';
-      if (name) payload.set(name, value);
-    }
+      const type  = /type=["']([^"']*)["']/i.exec(tag)?.[1]?.toLowerCase() ?? 'text';
 
-    // ── Detect and include the "I Agree" checkbox ──────────────────────────────
-    // 24Online portals require an agree/terms checkbox to be checked.
-    // Without this the server returns HTTP 200 with the same login page (not an error
-    // status) — which is why the POST succeeds but the session is never created.
-    const agreeFieldNames = [
-      'agreeFlag', 'agree', 'I_AGREE', 'iAgree', 'agreecheck',
-      'agree_flag', 'termsAgree', 'acceptTerms', 'terms',
-    ];
-    // Check if any of these appear as a checkbox in the HTML
-    let agreeField = null;
-    for (const af of agreeFieldNames) {
-      // Match a checkbox input with this name
-      if (new RegExp(`name=["']${af}["']`, 'i').test(portalHtml)) {
-        agreeField = af;
-        break;
+      if (!name) continue;
+
+      if (type === 'hidden' || type === 'submit') {
+        payload.set(name, value || 'Login');
       }
     }
-    // 24Online default: agreeFlag is always required even if not found by regex
-    agreeField = agreeField ?? 'agreeFlag';
-    payload.set(agreeField, '1');
-    await log(`Agree checkbox field: ${agreeField}=1`, 'info');
+
+    // ── 24Online Portal Required Parameters ──────────────────────────────────
+    // agreeFlag=1 and btnLogin=Login are strictly required by E24onlineHTTPClient
+    // servlet. Without btnLogin, the background POST is ignored by the server.
+    payload.set('agreeFlag', '1');
+    payload.set('btnLogin', 'Login');
 
     // Extract form action URL
     const actionMatch = /<form[^>]+action=["']([^"']+)["']/i.exec(portalHtml);
     if (actionMatch) {
       const rawAction = actionMatch[1];
-      // Resolve relative URL against the portal base
       formAction = new URL(rawAction, portalBase).href;
     }
 
-    // Extract username field name
-    // 24Online client.jsp uses 'userId' — check that first, then common fallbacks
+    // Extract username field name (24Online client.jsp uses 'userId')
     const userFieldNames = ['userId', 'username', 'userid', 'user_name', 'user', 'loginid', 'login', 'email'];
-    let userField = 'userId'; // 24Online default
+    let userField = 'userId';
     for (const name of userFieldNames) {
       if (new RegExp(`name=["']${name}["']`, 'i').test(portalHtml)) {
         userField = name;
@@ -214,7 +202,7 @@ async function silentLogin(username, password) {
       }
     }
 
-    // Extract password field name (fallback to 'password')
+    // Extract password field name
     const passFieldNames = ['password', 'passwd', 'pass', 'pwd'];
     let passField = 'password';
     for (const name of passFieldNames) {
@@ -224,22 +212,23 @@ async function silentLogin(username, password) {
       }
     }
 
-    // Inject credentials into payload (override any pre-filled hidden values)
+    // Inject credentials into payload
     payload.set(userField, username);
     payload.set(passField, password);
 
     await log(`Form: action=${formAction}, userField=${userField}, passField=${passField}`, 'info');
 
   } catch (parseErr) {
-    // Parsing failed — fall back to minimal payload with agree flag + credentials
     await log(`Form parse warning: ${parseErr.message} — using minimal payload`, 'warn');
     payload.set('username', username);
     payload.set('password', password);
-    payload.set('agreeFlag', '1'); // always include agree for 24Online portals
+    payload.set('userId', username);
+    payload.set('agreeFlag', '1');
+    payload.set('btnLogin', 'Login');
   }
 
-  // ── Step 3: POST the login form ─────────────────────────────────────────────
-  await log(`Submitting credentials silently… payload keys: ${[...payload.keys()].join(', ')}`, 'info');
+  // ── Step 3: POST the login form silently ─────────────────────────────────────
+  await log(`Submitting background login POST to ${formAction}…`, 'info');
   try {
     const postRes = await fetch(formAction, {
       method:  'POST',
@@ -249,19 +238,17 @@ async function silentLogin(username, password) {
       cache:   'no-store',
     });
     const postBody = await postRes.text();
-    await log(`Login POST returned ${postRes.status} (${postRes.url})`, 'info');
-    // If the response still contains the login form, the agree checkbox or credentials were rejected
+    await log(`Background login POST returned ${postRes.status}`, 'info');
     if (/login|sign.?in|client\.jsp|agreeFlag|I_AGREE/i.test(postBody) && postRes.status === 200) {
-      await log('POST response looks like the login page again — possible missing agree field or wrong credentials', 'warn');
+      await log('Background POST returned login page again — credentials or agreement missing', 'warn');
     }
   } catch (postErr) {
-    await log(`Login POST failed: ${postErr.message}`, 'error');
+    await log(`Background login POST failed: ${postErr.message}`, 'error');
     return 'FAILED';
   }
 
-  // ── Step 4: Verify connection after login ────────────────────────────────────
-  // Give the server a moment to process the session
-  await new Promise(r => setTimeout(r, 2000));
+  // ── Step 4: Verify connection after background login ─────────────────────────
+  await new Promise(r => setTimeout(r, 1500));
   const status = await checkInternet();
   await log(`Post-login connectivity check: ${status}`, status === 'CONNECTED' ? 'success' : 'warn');
   return status === 'CONNECTED' ? 'CONNECTED' : 'FAILED';
@@ -290,20 +277,16 @@ function resetRetryState() {
   isLoginInProgress = false;
 }
 
-// Notifications intentionally disabled — extension runs 100% silently.
-// All activity is logged to the popup Activity Log instead.
-
 // ─── Core Flow: Handle Captive Portal ─────────────────────────────────────────
 
 async function handleCaptivePortal() {
-  if (isLoginInProgress) return; // prevent concurrent attempts
+  if (isLoginInProgress) return;
   isLoginInProgress = true;
 
-  await log('Captive portal detected — initiating silent auto-login', 'warn');
+  await log('Captive portal detected — initiating silent background auto-login', 'warn');
   await setBadge('CAPTIVE_PORTAL');
   await broadcastStatus('CAPTIVE_PORTAL');
 
-  // Check if credentials are saved
   const credsResult = await chrome.storage.local.get('portalCredentials');
   const creds = credsResult.portalCredentials;
 
@@ -314,9 +297,8 @@ async function handleCaptivePortal() {
   }
 
   await setBadge('LOGGING_IN');
-  await log(`Silent login starting for user: ${creds.username}`, 'info');
+  await log(`Silent background login starting for user: ${creds.username}`, 'info');
 
-  // All login work happens in the background — no tab is opened
   const result = await silentLogin(creds.username, creds.password);
 
   if (result === 'CONNECTED') {
@@ -324,7 +306,7 @@ async function handleCaptivePortal() {
   } else if (result === 'OFFLINE') {
     await handleOffline();
   } else {
-    await log('Silent login failed — scheduling retry', 'warn');
+    await log('Background login failed — scheduling retry', 'warn');
     isLoginInProgress = false;
     await scheduleRetry();
   }
@@ -336,16 +318,24 @@ async function handleConnected() {
   await broadcastStatus('CONNECTED');
   await log('Internet connected successfully ✓', 'success');
 
-  // Record last login time
   await chrome.storage.local.set({
     lastLogin: {
       success:   true,
       time:      new Date().toISOString(),
-      portalUrl: 'https://internet.lpu.in/',
+      portalUrl: 'http://internet.lpu.in/24online/webpages/client.jsp',
     },
   });
 
-
+  // Automatically close any captive portal tabs opened by OS or browser
+  try {
+    const tabs = await chrome.tabs.query({ url: ['*://internet.lpu.in/*', '*://*/24online/*'] });
+    for (const tab of tabs) {
+      if (tab.id) {
+        await log(`Closing captive portal tab (${tab.url})`, 'info');
+        await chrome.tabs.remove(tab.id).catch(() => {});
+      }
+    }
+  } catch {}
 }
 
 async function handleOffline() {
