@@ -9,28 +9,6 @@
   // Don't run on internal Chrome or extension pages
   if (location.protocol === 'chrome-extension:' || location.protocol === 'chrome:') return;
 
-  // ─── Intercept page alert() to prevent blocking modal loops ──────────────
-  try {
-    const code = `
-      (function() {
-        const _origAlert = window.alert;
-        window.alert = function(msg) {
-          console.log('[AutoLogin] Intercepted page alert:', msg);
-          if (/agree|terms|condition/i.test(String(msg))) {
-            const cb = document.querySelector('input[name="agreeFlag"], input[type="checkbox"]');
-            if (cb) { cb.checked = true; try { cb.click(); } catch {} }
-            return; // suppress terms alert modal
-          }
-          return _origAlert.apply(this, arguments);
-        };
-      })();
-    `;
-    const script = document.createElement('script');
-    script.textContent = code;
-    (document.head || document.documentElement).appendChild(script);
-    script.remove();
-  } catch {}
-
   // ─── Is this a login page? ────────────────────────────────────────────────
 
   function isLPUPortal() {
@@ -165,22 +143,16 @@
   function checkCheckbox(el) {
     if (!el) return false;
 
-    // If already checked, nothing to do
     if (el.checked) return true;
 
-    // 1. Calling el.click() natively toggles unchecked (false) -> checked (true)
-    // AND fires inline onclick="..." handlers defined on the page.
     try {
       el.click();
     } catch {}
 
-    // 2. Ensure state is checked (DO NOT dispatch another click event — a 2nd
-    // click event on an already-checked box would uncheck it back to false!)
     if (!el.checked) {
       el.checked = true;
     }
 
-    // 3. Dispatch change and input events ONLY
     try {
       el.dispatchEvent(new Event('change', { bubbles: true }));
       el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -271,8 +243,6 @@
 
       const { username, password } = response.credentials;
 
-      await wait(400);
-
       const usernameField = findUsernameField();
       const passwordField = findPasswordField();
       const submitBtn     = findSubmitButton();
@@ -281,18 +251,14 @@
       if (!passwordField) { tell('loginFailed', 'Password field not found on page'); return; }
       if (!submitBtn)     { tell('loginFailed', 'Submit button not found on page');   return; }
 
-      tell('log', `[AutoLogin] Filling credentials for ${username}…`);
+      tell('log', `[AutoLogin] Instant auto-fill for ${username}…`);
 
+      // Fast execution — fill, check terms, enable button and submit instantly
       fill(usernameField, username);
-      await wait(200);
       fill(passwordField, password);
-      await wait(200);
 
-      // Tick the "I Agree" checkbox BEFORE attempting login
       findAndCheckAgreeBox();
-      await wait(300);
 
-      // Force enable the submit button in case page JS left it disabled
       try {
         submitBtn.removeAttribute('disabled');
         submitBtn.disabled = false;
@@ -301,15 +267,13 @@
         submitBtn.classList.remove('disabled');
       } catch {}
 
-      tell('log', '[AutoLogin] Submitting form…');
+      tell('log', '[AutoLogin] Submitting form instantly…');
 
-      // Primary submission: click the button
       try { submitBtn.click(); } catch {}
 
-      // Secondary submission: form.submit() if click didn't trigger navigation
       const form = submitBtn.closest('form') ?? passwordField.closest('form');
       if (form) {
-        await wait(300);
+        await wait(50);
         try { form.submit(); } catch {}
       }
 
@@ -317,7 +281,7 @@
     });
   }
 
-  // Run once DOM is ready
+  // Run once DOM is ready or immediately if already loaded
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', main);
   } else {
