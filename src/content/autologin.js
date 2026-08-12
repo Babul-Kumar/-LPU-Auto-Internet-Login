@@ -10,8 +10,6 @@
   if (location.protocol === 'chrome-extension:' || location.protocol === 'chrome:') return;
 
   // ─── Is this a login page? ────────────────────────────────────────────────
-  // For internet.lpu.in we check the hostname directly (fast path).
-  // For any other page we fall back to heuristic detection.
 
   function isLPUPortal() {
     const h = location.hostname.toLowerCase();
@@ -20,20 +18,14 @@
       h === 'internet.lpu.in' ||
       h.includes('lpu.in')    ||
       h.includes('internet.lpu') ||
-      // 24Online paths are a strong signal regardless of hostname
-      p.includes('24online') ||
+      p.includes('24online')  ||
       p.includes('client.jsp')
     );
   }
 
   function looksLikeLoginPage() {
-    // Must have a password field — that's the hard requirement
     if (!document.querySelector('input[type="password"]')) return false;
-
-    // If it's the LPU portal hostname, trust it immediately
     if (isLPUPortal()) return true;
-
-    // Otherwise need at least one more signal for confidence
     return (
       !!document.querySelector('form') ||
       !!document.querySelector('input[type="text"], input[type="email"]') ||
@@ -44,12 +36,9 @@
   // ─── Field Finders ────────────────────────────────────────────────────────
 
   function findUsernameField() {
-    // Priority: named/id attributes → type-based → proximity to password field
     const candidates = [
-      // 24Online client.jsp specific
       'input[name="userId"]',
       'input[id="userId"]',
-      // Common patterns
       'input[name="username"]',
       'input[name="userid"]',
       'input[name="user_name"]',
@@ -71,7 +60,6 @@
       if (el && isVisible(el)) return el;
     }
 
-    // Proximity fallback: look for the first non-password input inside the same form
     const pw = document.querySelector('input[type="password"]');
     if (pw) {
       const form = pw.closest('form');
@@ -81,7 +69,6 @@
         )].filter(isVisible);
         if (inputs.length) return inputs[0];
       }
-      // Broadest fallback: any visible text input before the password field in the DOM
       const all = [...document.querySelectorAll('input[type="text"], input[type="email"], input:not([type])')];
       const before = all.filter(el => el !== pw && isVisible(el));
       if (before.length) return before[0];
@@ -101,21 +88,18 @@
 
   function findSubmitButton() {
     const selectors = [
-      // 24Online specific
       'input[name="btnLogin"]',
       'input[value="Login"]',
       'input[value="Log In"]',
       'input[value="LOG IN"]',
       'input[value="Sign In"]',
       'input[value="Submit"]',
-      // Generic
       'input[type="submit"]',
       'button[type="submit"]',
       'button[value="Login"]',
       '#loginbtn',
       '.login-btn',
       'button.btn',
-      // Last resort: any button that isn't explicitly type="button"
       'button:not([type="button"])',
     ];
     for (const sel of selectors) {
@@ -131,15 +115,18 @@
     return s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0' && el.offsetParent !== null;
   }
 
-  // ─── Fill a field (works with React / Vue / plain HTML) ──────────────────
+  // ─── Fill a field (fires full event sequence for JS validation) ──────────
 
   function fill(field, value) {
     field.focus();
     const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
     if (setter) setter.call(field, value);
     else field.value = value;
-    field.dispatchEvent(new Event('input',  { bubbles: true }));
-    field.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const eventTypes = ['keydown', 'keypress', 'input', 'keyup', 'change'];
+    for (const type of eventTypes) {
+      try { field.dispatchEvent(new Event(type, { bubbles: true })); } catch {}
+    }
     field.blur();
   }
 
@@ -151,13 +138,51 @@
     try { chrome.runtime.sendMessage({ type, message, data }); } catch {}
   }
 
+  // ─── Checkbox clicker (triggers inline onclick handlers & validation) ──
+
+  function checkCheckbox(el) {
+    if (!el) return false;
+
+    // Native .click() is essential: setting el.checked = true in JS does NOT
+    // execute inline onclick="..." validation handlers on legacy JSP pages.
+    try {
+      if (!el.checked) el.click();
+    } catch {}
+
+    // Ensure state is checked
+    if (!el.checked) {
+      el.checked = true;
+    }
+
+    // Fire events in case click() didn't trigger change/input handlers
+    const events = ['click', 'change', 'input'];
+    for (const ev of events) {
+      try {
+        if (ev === 'click') {
+          el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+        } else {
+          el.dispatchEvent(new Event(ev, { bubbles: true }));
+        }
+      } catch {}
+    }
+
+    // Also click any associated <label> element
+    try {
+      let label = null;
+      if (el.id) label = document.querySelector(`label[for="${el.id}"]`);
+      if (!label) label = el.closest('label');
+      if (!label && el.parentElement) label = el.parentElement.querySelector('label');
+      if (label && label !== el) {
+        try { label.click(); } catch {}
+      }
+    } catch {}
+
+    return true;
+  }
+
   // ─── Find & tick the "I Agree" checkbox ──────────────────────────────────
-  // 24Online portals (and many other captive portals) gate the Login button
-  // behind an agree/terms checkbox. If it is unchecked the POST is ignored
-  // even though the button is clickable.
 
   function findAndCheckAgreeBox() {
-    // Try by known name attributes first
     const nameSelectors = [
       'input[name="agreeFlag"]',
       'input[name="agree"]',
@@ -168,32 +193,36 @@
       'input[name="termsAgree"]',
       'input[name="acceptTerms"]',
       'input[name="terms"]',
+      'input[id="agreeFlag"]',
+      'input[id="agree"]',
     ];
+
     for (const sel of nameSelectors) {
       const el = document.querySelector(sel);
-      if (el && el.type === 'checkbox' && !el.checked) {
-        el.checked = true;
-        el.dispatchEvent(new Event('change', { bubbles: true }));
+      if (el && el.type === 'checkbox') {
+        checkCheckbox(el);
         tell('log', `[AutoLogin] Checked agree checkbox: ${sel}`);
         return true;
       }
-      if (el && el.type === 'checkbox' && el.checked) {
-        tell('log', `[AutoLogin] Agree checkbox already checked: ${sel}`);
-        return true; // already ticked — nothing to do
+    }
+
+    // Fallback: search all checkboxes for context containing 'agree', 'terms', 'condition'
+    const allCheckboxes = [...document.querySelectorAll('input[type="checkbox"]')];
+    for (const cb of allCheckboxes) {
+      const context = (cb.closest('label,p,div,td,li,span,tr') ?? cb.parentElement)?.textContent ?? '';
+      if (/agree|terms|accept|condition/i.test(context)) {
+        checkCheckbox(cb);
+        tell('log', '[AutoLogin] Checked agree checkbox via heuristic');
+        return true;
       }
     }
 
-    // Heuristic fallback: find any unchecked checkbox near text containing
-    // 'agree', 'terms', 'accept' (covers portals that don't use our known names)
-    const allCheckboxes = [...document.querySelectorAll('input[type="checkbox"]')];
+    // Fallback 2: if there's a checkbox on page that is NOT "Save Password", check it
     for (const cb of allCheckboxes) {
-      const context = (cb.closest('label,p,div,td,li') ?? cb.parentElement)?.textContent ?? '';
-      if (/agree|terms|accept|condition/i.test(context)) {
-        if (!cb.checked) {
-          cb.checked = true;
-          cb.dispatchEvent(new Event('change', { bubbles: true }));
-          tell('log', '[AutoLogin] Checked agree checkbox via heuristic');
-        }
+      const context = (cb.closest('label,p,div,td,li,span,tr') ?? cb.parentElement)?.textContent ?? '';
+      if (!/save.?password/i.test(context)) {
+        checkCheckbox(cb);
+        tell('log', '[AutoLogin] Checked non-save-password checkbox');
         return true;
       }
     }
@@ -202,6 +231,7 @@
     return false;
   }
 
+  // ─── Main ─────────────────────────────────────────────────────────────────
 
   async function main() {
     if (!looksLikeLoginPage()) return;
@@ -218,7 +248,6 @@
 
       const { username, password } = response.credentials;
 
-      // Short wait so any JS-rendered form fields finish mounting
       await wait(400);
 
       const usernameField = findUsernameField();
@@ -236,18 +265,28 @@
       fill(passwordField, password);
       await wait(200);
 
-      // Tick the "I Agree" checkbox BEFORE clicking Login
-      // (24Online and many captive portals require this)
+      // Tick the "I Agree" checkbox BEFORE attempting login
       findAndCheckAgreeBox();
-      await wait(200);
+      await wait(300);
+
+      // Force enable the submit button in case page JS left it disabled
+      try {
+        submitBtn.removeAttribute('disabled');
+        submitBtn.disabled = false;
+        submitBtn.style.pointerEvents = 'auto';
+        submitBtn.style.opacity = '1';
+        submitBtn.classList.remove('disabled');
+      } catch {}
 
       tell('log', '[AutoLogin] Submitting form…');
-      submitBtn.click();
 
-      // If click didn't cause navigation, also try form.submit()
+      // Primary submission: click the button
+      try { submitBtn.click(); } catch {}
+
+      // Secondary submission: form.submit() if click didn't trigger navigation
       const form = submitBtn.closest('form') ?? passwordField.closest('form');
-      if (form && submitBtn.type !== 'submit') {
-        await wait(200);
+      if (form) {
+        await wait(300);
         try { form.submit(); } catch {}
       }
 
