@@ -9,6 +9,28 @@
   // Don't run on internal Chrome or extension pages
   if (location.protocol === 'chrome-extension:' || location.protocol === 'chrome:') return;
 
+  // ─── Intercept page alert() to prevent blocking modal loops ──────────────
+  try {
+    const code = `
+      (function() {
+        const _origAlert = window.alert;
+        window.alert = function(msg) {
+          console.log('[AutoLogin] Intercepted page alert:', msg);
+          if (/agree|terms|condition/i.test(String(msg))) {
+            const cb = document.querySelector('input[name="agreeFlag"], input[type="checkbox"]');
+            if (cb) { cb.checked = true; try { cb.click(); } catch {} }
+            return; // suppress terms alert modal
+          }
+          return _origAlert.apply(this, arguments);
+        };
+      })();
+    `;
+    const script = document.createElement('script');
+    script.textContent = code;
+    (document.head || document.documentElement).appendChild(script);
+    script.remove();
+  } catch {}
+
   // ─── Is this a login page? ────────────────────────────────────────────────
 
   function isLPUPortal() {
@@ -138,43 +160,30 @@
     try { chrome.runtime.sendMessage({ type, message, data }); } catch {}
   }
 
-  // ─── Checkbox clicker (triggers inline onclick handlers & validation) ──
+  // ─── Checkbox clicker ─────────────────────────────────────────────────────
 
   function checkCheckbox(el) {
     if (!el) return false;
 
-    // Native .click() is essential: setting el.checked = true in JS does NOT
-    // execute inline onclick="..." validation handlers on legacy JSP pages.
+    // If already checked, nothing to do
+    if (el.checked) return true;
+
+    // 1. Calling el.click() natively toggles unchecked (false) -> checked (true)
+    // AND fires inline onclick="..." handlers defined on the page.
     try {
-      if (!el.checked) el.click();
+      el.click();
     } catch {}
 
-    // Ensure state is checked
+    // 2. Ensure state is checked (DO NOT dispatch another click event — a 2nd
+    // click event on an already-checked box would uncheck it back to false!)
     if (!el.checked) {
       el.checked = true;
     }
 
-    // Fire events in case click() didn't trigger change/input handlers
-    const events = ['click', 'change', 'input'];
-    for (const ev of events) {
-      try {
-        if (ev === 'click') {
-          el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-        } else {
-          el.dispatchEvent(new Event(ev, { bubbles: true }));
-        }
-      } catch {}
-    }
-
-    // Also click any associated <label> element
+    // 3. Dispatch change and input events ONLY
     try {
-      let label = null;
-      if (el.id) label = document.querySelector(`label[for="${el.id}"]`);
-      if (!label) label = el.closest('label');
-      if (!label && el.parentElement) label = el.parentElement.querySelector('label');
-      if (label && label !== el) {
-        try { label.click(); } catch {}
-      }
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.dispatchEvent(new Event('input', { bubbles: true }));
     } catch {}
 
     return true;
@@ -183,6 +192,20 @@
   // ─── Find & tick the "I Agree" checkbox ──────────────────────────────────
 
   function findAndCheckAgreeBox() {
+    // 1. Inject hidden agreeFlag=1 into all forms so 24Online servlet receives it
+    const forms = document.querySelectorAll('form');
+    forms.forEach(form => {
+      let hiddenAgree = form.querySelector('input[name="agreeFlag"]');
+      if (!hiddenAgree) {
+        hiddenAgree = document.createElement('input');
+        hiddenAgree.type = 'hidden';
+        hiddenAgree.name = 'agreeFlag';
+        form.appendChild(hiddenAgree);
+      }
+      hiddenAgree.value = '1';
+    });
+
+    // 2. Search by known name/id attributes
     const nameSelectors = [
       'input[name="agreeFlag"]',
       'input[name="agree"]',
@@ -206,18 +229,18 @@
       }
     }
 
-    // Fallback: search all checkboxes for context containing 'agree', 'terms', 'condition'
+    // 3. Search all checkboxes for context containing 'agree', 'terms', 'condition', 'policy'
     const allCheckboxes = [...document.querySelectorAll('input[type="checkbox"]')];
     for (const cb of allCheckboxes) {
       const context = (cb.closest('label,p,div,td,li,span,tr') ?? cb.parentElement)?.textContent ?? '';
-      if (/agree|terms|accept|condition/i.test(context)) {
+      if (/agree|terms|accept|condition|policy/i.test(context)) {
         checkCheckbox(cb);
         tell('log', '[AutoLogin] Checked agree checkbox via heuristic');
         return true;
       }
     }
 
-    // Fallback 2: if there's a checkbox on page that is NOT "Save Password", check it
+    // 4. Check any checkbox on page that is NOT "Save Password"
     for (const cb of allCheckboxes) {
       const context = (cb.closest('label,p,div,td,li,span,tr') ?? cb.parentElement)?.textContent ?? '';
       if (!/save.?password/i.test(context)) {
@@ -227,7 +250,7 @@
       }
     }
 
-    tell('log', '[AutoLogin] No agree checkbox found — proceeding without it');
+    tell('log', '[AutoLogin] Injected agreeFlag=1 hidden field');
     return false;
   }
 
