@@ -88,10 +88,23 @@ const PORTAL_REGISTRY = [
     submitSelector: 'button[type="submit"], .submit-btn',
   },
 
-  // ── Generic / Universal Fallback ───────────────────────────────────────────
+  // ── Generic / Universal Captive Portal Fallback ─────────────────────────────
   {
-    name: 'Generic Portal',
-    match: () => true,
+    name: 'Generic Captive Portal',
+    match: (hostname, pathname) => {
+      // Never match public sites like google.com, github.com
+      const publicSites = ['google.com', 'github.com', 'microsoft.com', 'amazon.com', 'facebook.com'];
+      if (publicSites.some(d => hostname === d || hostname.endsWith('.' + d))) return false;
+
+      // Only match if it looks like a campus IP or captive gateway
+      return (
+        /^10\./.test(hostname) ||
+        /^192\.168\./.test(hostname) ||
+        /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname) ||
+        pathname.includes('captive') ||
+        pathname.includes('portal')
+      );
+    },
     usernameSelector: null,   // triggers smart detection in autologin.js
     passwordSelector: 'input[type="password"]',
     submitSelector: [
@@ -107,35 +120,23 @@ const PORTAL_REGISTRY = [
 
 /**
  * Get the best-matching portal config for the current page.
- * @returns {Object} Portal config object
+ * @returns {Object|null} Portal config object or null
  */
 function detectPortalConfig() {
   const hostname = location.hostname.toLowerCase();
-  const config = PORTAL_REGISTRY.find((p) => p.match(hostname));
-  return config ?? PORTAL_REGISTRY[PORTAL_REGISTRY.length - 1]; // fallback to generic
+  const pathname = location.pathname.toLowerCase();
+  const config = PORTAL_REGISTRY.find((p) => p.match(hostname, pathname));
+  return config ?? null;
 }
 
 /**
  * Check if the current page looks like a captive portal login page.
- * Uses multiple heuristics for reliability.
  * @returns {boolean}
  */
 function looksLikeLoginPage() {
-  // Must have a password field
   const hasPasswordField = !!document.querySelector('input[type="password"]');
   if (!hasPasswordField) return false;
-
-  // Additional confidence signals
-  const signals = [
-    !!document.querySelector('form'),
-    !!document.querySelector('input[type="text"], input[type="email"]'),
-    /login|sign.?in|auth|portal|connect|captive/i.test(document.title),
-    /login|sign.?in|auth|portal|connect|captive/i.test(location.pathname),
-    /login|sign.?in|auth|portal|connect|captive/i.test(location.hostname),
-  ];
-
-  const confidence = signals.filter(Boolean).length;
-  return confidence >= 1; // password field + at least 1 more signal
+  return detectPortalConfig() !== null;
 }
 
 // Expose to autologin.js via window (same content script context)

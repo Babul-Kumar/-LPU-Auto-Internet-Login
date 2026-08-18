@@ -9,28 +9,70 @@
   // Don't run on internal Chrome or extension pages
   if (location.protocol === 'chrome-extension:' || location.protocol === 'chrome:') return;
 
-  // ─── Is this a login page? ────────────────────────────────────────────────
+  // ─── Domain & Campus Portal Detection ─────────────────────────────────────
+
+  const PUBLIC_SITE_DOMAINS = [
+    'google.com', 'github.com', 'microsoft.com', 'live.com', 'outlook.com', 'office.com',
+    'amazon.com', 'amazon.in', 'facebook.com', 'instagram.com', 'twitter.com', 'x.com',
+    'linkedin.com', 'netflix.com', 'apple.com', 'icloud.com', 'youtube.com', 'reddit.com',
+    'stackoverflow.com', 'chatgpt.com', 'openai.com', 'dropbox.com', 'adobe.com', 'zoom.us',
+    'discord.com', 'spotify.com', 'twitch.tv', 'pinterest.com', 'whatsapp.com', 'telegram.org',
+    'medium.com', 'wikipedia.org', 'gitlab.com', 'bitbucket.org', 'yahoo.com', 'bing.com'
+  ];
+
+  function isKnownPublicWebsite(hostname) {
+    return PUBLIC_SITE_DOMAINS.some(domain => hostname === domain || hostname.endsWith('.' + domain));
+  }
+
+  function isCampusIP(hostname) {
+    return (
+      /^10\./.test(hostname) ||
+      /^192\.168\./.test(hostname) ||
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname)
+    );
+  }
 
   function isLPUPortal() {
     const h = location.hostname.toLowerCase();
     const p = location.pathname.toLowerCase();
-    return (
+
+    // Explicitly reject known public websites (e.g. github.com, google.com)
+    if (isKnownPublicWebsite(h)) return false;
+
+    // Direct match on LPU domain / subdomains / 24online path / campus gateway IP
+    if (
       h === 'internet.lpu.in' ||
       h.includes('lpu.in')    ||
       h.includes('internet.lpu') ||
       p.includes('24online')  ||
-      p.includes('client.jsp')
-    );
+      p.includes('client.jsp') ||
+      p.includes('e24onlinehttpclient') ||
+      isCampusIP(h)
+    ) {
+      return true;
+    }
+
+    // Signature DOM element check for 24online / LPU portal
+    if (
+      document.querySelector('input[name="userId"]') ||
+      document.querySelector('input[name="agreeFlag"]') ||
+      /lovely professional university|24online/i.test(document.title + ' ' + (document.body?.innerText ?? ''))
+    ) {
+      return true;
+    }
+
+    return false;
   }
 
   function looksLikeLoginPage() {
+    // Must have a password field
     if (!document.querySelector('input[type="password"]')) return false;
-    if (isLPUPortal()) return true;
-    return (
-      !!document.querySelector('form') ||
-      !!document.querySelector('input[type="text"], input[type="email"]') ||
-      /login|sign.?in|auth|portal|connect|captive/i.test(document.title + location.href)
-    );
+
+    // Reject public internet websites immediately
+    if (isKnownPublicWebsite(location.hostname.toLowerCase())) return false;
+
+    // Must strictly match LPU / captive portal domain or DOM signature
+    return isLPUPortal();
   }
 
   // ─── Field Finders ────────────────────────────────────────────────────────
