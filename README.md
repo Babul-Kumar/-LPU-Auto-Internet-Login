@@ -6,7 +6,7 @@
 
 **Automatically logs you into the LPU campus WiFi — silently, in the background, every time.**
 
-[![Version](https://img.shields.io/badge/version-1.0.0-4f8ef7?style=flat-square)](https://github.com/Babul-Kumar/-LPU-Auto-Internet-Login/releases)
+[![Version](https://img.shields.io/badge/version-1.1.0-4f8ef7?style=flat-square)](https://github.com/Babul-Kumar/-LPU-Auto-Internet-Login/releases)
 [![Manifest](https://img.shields.io/badge/Manifest-V3-00d4ff?style=flat-square)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![License](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](LICENSE)
 [![Privacy](https://img.shields.io/badge/data-100%25%20local-f59e0b?style=flat-square)](#-security--privacy)

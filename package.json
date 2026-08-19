@@ -1,6 +1,6 @@
 {
   "name": "lpu-auto-internet-login",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Smart Captive Portal Login Manager for LPU campus WiFi",
   "private": true,
   "scripts": {
